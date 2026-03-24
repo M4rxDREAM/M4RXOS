@@ -1,0 +1,66 @@
+name: Build crDroid for spes
+
+on:
+  workflow_dispatch:
+    inputs:
+      BUILD_TYPE:
+        description: 'Build type (user/userdebug)'
+        required: true
+        default: 'userdebug'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex \
+            g++-multilib gcc-multilib git gnupg gperf \
+            imagemagick lib32ncurses5-dev lib32readline-dev \
+            lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+            libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools \
+            xsltproc zip zlib1g-dev python3 python-is-python3
+
+      - name: Setup repo tool
+        run: |
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Sync sources
+        run: |
+          mkdir -p workspace
+          cd workspace
+          repo init -u https://github.com/M4rxDREAM/android -b 14.0
+          repo sync -j4 --force-sync --no-clone-bundle --no-tags
+
+      - name: Clone device trees
+        run: |
+          cd workspace
+          git clone https://github.com/M4rxDREAM/android_device_xiaomi_spes device/xiaomi/spes
+          git clone https://github.com/M4rxDREAM/android_vendor_xiaomi_spes vendor/xiaomi/spes
+          git clone https://github.com/M4rxDREAM/kernel_xiaomi_sm6225 kernel/xiaomi/sm6225
+          git clone https://github.com/M4rxDREAM/android_hardware_xiaomi hardware/xiaomi/aidl
+
+      - name: Build ROM
+        run: |
+          cd workspace
+          source build/envsetup.sh
+          lunch lineage_spes-${{ github.event.inputs.BUILD_TYPE }}
+          make bacon -j$(nproc)
+
+      - name: Upload ROM
+        uses: actions/upload-artifact@v4
+        with:
+          name: crDroid-spes
+          path: workspace/out/target/product/spes/*.zip
+          retention-days: 7
